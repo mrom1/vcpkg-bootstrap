@@ -1,0 +1,131 @@
+name: Integration Test Windows
+
+on:
+  push:
+    branches: [testing]
+  pull_request:
+    branches: [testing]
+  workflow_dispatch:
+    inputs:
+      script_ref:
+        description: "Branch/tag/SHA on main to test"
+        required: false
+        default: "main"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.script_ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.case }} (isolated=${{ matrix.isolated }})
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { case: example,                        isolated: "OFF" }
+          - { case: example,                        isolated: "ON"  }
+          - { case: manifest-file,                  isolated: "OFF" }
+          - { case: manifest-file,                  isolated: "ON"  }
+          - { case: include-file,                   isolated: "OFF" }
+          - { case: include-file,                   isolated: "ON"  }
+          - { case: manifest-file-baseline,         isolated: "OFF" }
+          - { case: bundled-vcpkg,                  isolated: "OFF" }
+          - { case: install-function,               isolated: "OFF" }
+          - { case: install-function,               isolated: "ON"  }
+          - { case: install-function-manifest-mode, isolated: "OFF" }
+          - { case: find-package-fallback,          isolated: "OFF" }
+          - { case: find-package-fallback,          isolated: "ON"  }
+          - { case: find-package-guard,             isolated: "OFF" }
+          - { case: conan-toolchain,                isolated: "OFF" }
+          - { case: conan-provider,                 isolated: "OFF" }
+          - { case: chainload-toolchain,            isolated: "OFF" }
+          - { case: user-vcpkg-toolchain,           isolated: "OFF" }
+          - { case: external-vcpkg,                 isolated: "OFF" }
+          - { case: include-after-project,          isolated: "OFF" }
+          - { case: subproject,                     isolated: "OFF" }
+          - { case: existing-build-dir,             isolated: "OFF" }
+          - { case: toolchain-switch,               isolated: "OFF" }
+          - { case: stale-provider,                 isolated: "OFF" }
+    steps:
+      - name: Checkout testing branch
+        uses: actions/checkout@v5
+
+      - name: Checkout script (main)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.script_ref || 'main' }}
+          path: _script
+
+      - name: Checkout example branch
+        if: matrix.case == 'example'
+        uses: actions/checkout@v5
+        with:
+          ref: example
+          path: _example
+
+      - name: Set up Python (Conan)
+        if: startsWith(matrix.case, 'conan-')
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Conan
+        if: startsWith(matrix.case, 'conan-')
+        run: pip install conan
+
+      - name: Tool versions
+        run: cmake --version && git --version
+
+      - name: Run test
+        run: >
+          cmake
+          -DVB_SCRIPT_DIR=${{ github.workspace }}/_script
+          -DVB_EXAMPLE_DIR=${{ github.workspace }}/_example
+          -DVB_WORK_DIR=${{ github.workspace }}/_work
+          -DVB_ISOLATED=${{ matrix.isolated }}
+          -P tests/${{ matrix.case }}/run.cmake
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-windows-${{ matrix.case }}-${{ matrix.isolated }}
+          path: |
+            _work/logs/**
+            _work/**/CMakeCache.txt
+            _work/**/vcpkg-manifest-install.log
+            _work/**/vcpkg-bootstrap/install.log
+          if-no-files-found: ignore
+
+  release-fetch:
+    name: release-fetch (${{ inputs.script_ref }})
+    if: startsWith(inputs.script_ref, 'v')
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout testing branch
+        uses: actions/checkout@v5
+
+      - name: Run test
+        run: >
+          cmake
+          -DVB_SCRIPT_TAG=${{ inputs.script_ref }}
+          -DVB_WORK_DIR=${{ github.workspace }}/_work
+          -P tests/release-fetch/run.cmake
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-windows-release-fetch
+          path: |
+            _work/logs/**
+            _work/**/CMakeCache.txt
+            _work/**/vcpkg-manifest-install.log
+          if-no-files-found: ignore
