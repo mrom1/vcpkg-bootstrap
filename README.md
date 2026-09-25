@@ -1,14 +1,48 @@
-# CMake vcpkg project boilerplate
+# vcpkg-bootstrap example
 
-[![CMake Template](https://img.shields.io/badge/CMake%20Template-Vcpkg%20Integration-blue.svg?colorA=24292e&colorB=0366d6&style=flat&longCache=true&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAM6wAADOsB5dZE0gAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAERSURBVCiRhZG/SsMxFEZPfsVJ61jbxaF0cRQRcRJ9hlYn30IHN/+9iquDCOIsblIrOjqKgy5aKoJQj4O3EEtbPwhJbr6Te28CmdSKeqzeqr0YbfVIrTBKakvtOl5dtTkK+v4HfA9PEyBFCY9AGVgCBLaBp1jPAyfAJ/AAdIEG0dNAiyP7+K1qIfMdonZic6+WJoBJvQlvuwDqcXadUuqPA1NKAlexbRTAIMvMOCjTbMwl1LtI/6KWJ5Q6rT6Ht1MA58AX8Apcqqt5r2qhrgAXQC3CZ6i1+KMd9TRu3MvA3aH/fFPnBodb6oe6HM8+lYHrGdRXW8M9bMZtPXUji69lmf5Cmamq7quNLFZXD9Rq7v0Bpc1o/tp0fisAAAAASUVORK5CYII=)](https://github.com/mrom1/boilerplate-vcpkg-cmake)
-![Integration Test Windows](https://github.com/mrom1/boilerplate-vcpkg-cmake/actions/workflows/integration_windows.yml/badge.svg)
-![Integration Test Linux](https://github.com/mrom1/boilerplate-vcpkg-cmake/actions/workflows/integration_linux.yml/badge.svg)
+A minimal C++ project that gets its dependencies from [vcpkg](https://github.com/microsoft/vcpkg)
+through [vcpkg-bootstrap](https://github.com/mrom1/vcpkg-bootstrap). Copy it as a starting point.
 
-This repository is a template repository acting as boilerplate code for a empty C++ project using [vcpkg](https://github.com/microsoft/vcpkg) with CMake.
+- [`CMakeLists.txt`](CMakeLists.txt) fetches vcpkg-bootstrap before `project()` and uses plain
+  `find_package(fmt CONFIG REQUIRED)`.
+- [`vcpkg.json`](vcpkg.json) lists the dependencies (`fmt`) and pins a `builtin-baseline`, so
+  everyone gets the same versions.
+- [`source/main.cpp`](source/main.cpp) prints `Hello World!` with fmt.
 
-It automatically detects if vcpkg is already installed on the system and will download, update and install vcpkg for you if necessary. All done through a simple ``include(cmake/vcpkg.cmake)`` inside your root CMakeLists.txt before you define your project!
+No vcpkg installation is needed: on the first configure vcpkg-bootstrap uses an existing vcpkg
+(`VCPKG_ROOT`) or clones and bootstraps one, then vcpkg installs `fmt`.
 
-To add your external dependencies through vcpkg you have two options:
-- Use a Manifest file [vcpkg.json](vcpkg.json) (For more information see [Manifest file Documentation](https://vcpkg.io/en/docs/maintainers/manifest-files.html)).
-- Use the CMake function ``vcpkg_install_package(package_name)`` from the [vcpkg.cmake](cmake/vcpkg.cmake) script.
+Requires CMake 3.24 or newer, git and a C++ compiler.
 
+## Build and run
+
+```sh
+cmake -S . -B build
+cmake --build build --config Release
+./build/main              # Windows (Visual Studio): build\Release\main.exe
+```
+
+### Isolated mode ("virtual environment")
+
+```sh
+cmake -S . -B build -DVCPKG_BOOTSTRAP_ISOLATED=ON
+```
+
+vcpkg and all packages are then kept in the build folder; deleting it removes everything.
+By default (`OFF`) one vcpkg clone is shared by all your projects.
+
+## Adding dependencies
+
+1. Add the port to `"dependencies"` in `vcpkg.json` (port names: [vcpkg.io](https://vcpkg.io/en/packages)).
+2. Add `find_package(...)` and `target_link_libraries(...)` to `CMakeLists.txt` as the port's usage text says (vcpkg prints it after installing).
+
+To move to newer package versions, update `builtin-baseline` to a newer vcpkg commit (`vcpkg x-update-baseline`).
+
+For a real project, pin `GIT_TAG` in `CMakeLists.txt` to a release tag or commit hash of vcpkg-bootstrap instead of `main`.
+
+Everything else (where vcpkg comes from, other ways to get packages, cross-compiling,
+troubleshooting) is in the [vcpkg-bootstrap README](https://github.com/mrom1/vcpkg-bootstrap#readme).
+
+## License
+
+[MIT](LICENSE)

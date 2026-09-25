@@ -1,43 +1,37 @@
 #######################################################################################
-## MIT License                                                                       ## 
-##                                                                                   ##
-## Copyright (c) 2022 https://github.com/mrom1/boilerplate-vcpkg-cmake               ##
-##                                                                                   ##
-## Permission is hereby granted, free of charge, to any person obtaining a copy      ##
-## of this software and associated documentation files (the "Software"), to deal     ##
-## in the Software without restriction, including without limitation the rights      ##
-## to use, copy, modify, merge, publish, distribute, sublicense, and/or sell         ##
-## copies of the Software, and to permit persons to whom the Software is             ##
-## furnished to do so, subject to the following conditions:                          ##
-##                                                                                   ##
-## The above copyright notice and this permission notice shall be included in all    ##
-## copies or substantial portions of the Software.                                   ##
-##                                                                                   ##
-## THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR        ##
-## IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,          ##
-## FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE       ##
-## AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER            ##
-## LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,     ##
-## OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE     ##
-## SOFTWARE.                                                                         ##
+## Set CMake Minimum Version                                                         ##
 #######################################################################################
+cmake_minimum_required(VERSION 3.24)
 
 
 #######################################################################################
 ## Setup vcpkg toolchain                                                             ##
-## Needs to be done at the root of CMake, before defining the project                ##
+## IMPORTANT: Needs to be done at the root of CMake, before defining the project     ##
 #######################################################################################
-include(cmake/vcpkg.cmake)
+include(FetchContent)
+FetchContent_Declare(vcpkg_bootstrap
+  GIT_REPOSITORY https://github.com/mrom1/vcpkg-bootstrap.git
+  GIT_TAG        main
+)
+# Optional: Isolated mode will install vcpkg and all packages into the build folder.
+option(VCPKG_BOOTSTRAP_ISOLATED "Virtual Environment Mode" OFF)
+FetchContent_MakeAvailable(vcpkg_bootstrap)
 
 
 #######################################################################################
 ## Project                                                                           ##
 #######################################################################################
-cmake_minimum_required(VERSION 3.20)
-project(boilerplate-vcpkg-cmake VERSION 1.0.0)
+project(vcpkg-bootstrap-example VERSION 0.1.0 LANGUAGES CXX)
 
 
 #######################################################################################
-## Add sources                                                                       ##
+## Find Dependency                                                                   ##
 #######################################################################################
-add_subdirectory(source)
+find_package(fmt CONFIG REQUIRED)
+
+
+#######################################################################################
+## Building Executable                                                               ##
+#######################################################################################
+add_executable(main source/main.cpp)
+target_link_libraries(main PRIVATE fmt::fmt)
