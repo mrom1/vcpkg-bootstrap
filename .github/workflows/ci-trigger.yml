@@ -23,7 +23,7 @@ jobs:
       # GitHub disables scheduled workflows after 60 days without repository activity.
       - name: Keep the schedule enabled
         continue-on-error: true
-        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/trigger.yml/enable"
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/ci-trigger.yml/enable"
 
       - name: Dispatch testing workflows (script_ref=${{ env.SCRIPT_REF }})
         run: |
