@@ -1,0 +1,32 @@
+name: Trigger integration tests
+
+# The integration tests live on the "testing" branch (which also owns the badges). This workflow
+# dispatches them for the commit or tag pushed to main, and weekly against main.
+on:
+  schedule:
+    - cron: "0 5 * * 1" # weekly, Monday 05:00 UTC
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SCRIPT_REF: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+    steps:
+      # GitHub disables scheduled workflows after 60 days without repository activity.
+      - name: Keep the schedule enabled
+        continue-on-error: true
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/trigger.yml/enable"
+
+      - name: Dispatch testing workflows (script_ref=${{ env.SCRIPT_REF }})
+        run: |
+          for wf in ci-linux.yml ci-windows.yml ci-macos.yml; do
+            gh workflow run "$wf" --repo "${{ github.repository }}" --ref testing -f script_ref="$SCRIPT_REF"
+          done
