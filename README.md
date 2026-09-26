@@ -48,6 +48,7 @@ Modes: **shared** = `VCPKG_BOOTSTRAP_ISOLATED=OFF` (vcpkg in the per-user cache 
 | [`subproject`](tests/subproject) | Consumed by a parent with and without vcpkg-bootstrap | shared |
 | [`existing-build-dir`](tests/existing-build-dir) | A build directory configured before without vcpkg: clear error, nothing cloned | shared |
 | [`toolchain-switch`](tests/toolchain-switch) | vcpkg location changed in an existing build directory: clear error, nothing cloned | shared |
+| [`env-vcpkg-switch`](tests/env-vcpkg-switch) | Only the environment (`VCPKG_ROOT`) changed for an existing build directory: the configured vcpkg is kept | shared |
 | [`stale-provider`](tests/stale-provider) | A leftover provider entry after removing vcpkg-bootstrap is harmless | shared |
 | [`release-fetch`](tests/release-fetch) | A release tag fetched from GitHub works (CI: tags only) | shared |
 

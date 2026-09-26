@@ -51,6 +51,7 @@ jobs:
           - { case: subproject,                     isolated: "OFF" }
           - { case: existing-build-dir,             isolated: "OFF" }
           - { case: toolchain-switch,               isolated: "OFF" }
+          - { case: env-vcpkg-switch,               isolated: "OFF" }
           - { case: stale-provider,                 isolated: "OFF" }
     steps:
       - name: Checkout testing branch
