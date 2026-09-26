@@ -775,6 +775,7 @@ function(_vcpkg_bootstrap_main)
   # ports in classic mode (vcpkg_bootstrap_install(), find_package() fallback). Without such a
   # manifest it is skipped in favour of a managed vcpkg.
   set(_env_root "")
+  set(_env_note "")
   if(NOT VCPKG_BOOTSTRAP_ROOT_DIR AND NOT VCPKG_BOOTSTRAP_ISOLATED AND NOT "$ENV{VCPKG_ROOT}" STREQUAL "")
     file(TO_CMAKE_PATH "$ENV{VCPKG_ROOT}" _env_root)
     if(EXISTS "${_env_root}/vcpkg-bundle.json" OR NOT IS_DIRECTORY "${_env_root}/ports")
@@ -793,7 +794,8 @@ function(_vcpkg_bootstrap_main)
       endif()
 
       if(_manifest AND NOT _manifest_off AND (_baseline OR _registry_config))
-        message(STATUS
+        # Printed below, once it is clear that this vcpkg is really used.
+        set(_env_note
           "[vcpkg-bootstrap] ENV{VCPKG_ROOT} is a bundled vcpkg (e.g. Visual Studio's); using it "
           "because the manifest pins a baseline. (vcpkg_bootstrap_install() and the find_package() "
           "fallback are inactive in manifest mode anyway.)")
@@ -842,6 +844,16 @@ function(_vcpkg_bootstrap_main)
   string(REGEX REPLACE "/$" "" _root "${_root}")
   set(_toolchain "${_root}/scripts/buildsystems/vcpkg.cmake")
 
+  # Chosen by the environment (ENV{VCPKG_ROOT}, the per-user cache) rather than by a setting of
+  # this build directory. Such a choice can differ between configures of the same build
+  # directory just because they run in different shells: a Visual Studio developer prompt (and
+  # IDEs that load it, e.g. VS Code's CMake Tools) sets ENV{VCPKG_ROOT} to the bundled vcpkg,
+  # a plain terminal to the user's own one or not at all.
+  set(_from_env FALSE)
+  if(_source STREQUAL "ENV{VCPKG_ROOT}" OR (_source STREQUAL "shared" AND NOT VCPKG_BOOTSTRAP_INSTALL_DIR))
+    set(_from_env TRUE)
+  endif()
+
   # --- CMake only reads the toolchain on the first configure of a build directory ------
   # CMAKE_PLATFORM_INFO_INITIALIZED is cached by the first project() call. Set without our
   # toolchain means this build directory was configured before without vcpkg, and CMake would
@@ -861,13 +873,58 @@ function(_vcpkg_bootstrap_main)
       string(TOLOWER "${_now}" _now)
     endif()
     if(NOT _before STREQUAL _now)
-      message(FATAL_ERROR
-        "[vcpkg-bootstrap] The vcpkg location changed since this build directory was configured:\n"
-        "  before: ${_own_toolchain}\n"
-        "  now:    ${_toolchain}\n"
-        "CMake only reads the toolchain file on the first configure of a build directory, so the "
-        "change cannot take effect. Delete the build directory (or its CMakeCache.txt) and configure again.")
+      string(REGEX REPLACE "/scripts/buildsystems/vcpkg\\.cmake$" "" _before_root "${_own_toolchain}")
+      # Was the configured vcpkg chosen by the environment too? Build directories configured by
+      # an older version of this script do not record it: then everything but isolated mode was.
+      if(DEFINED CACHE{_VCPKG_BOOTSTRAP_FROM_ENV})
+        set(_before_from_env "$CACHE{_VCPKG_BOOTSTRAP_FROM_ENV}")
+        set(_before_managed "$CACHE{_VCPKG_BOOTSTRAP_MANAGED}")
+      else()
+        _vcpkg_bootstrap_default_install_dir(_default_dir)
+        set(_cmp_root "${_before_root}")
+        set(_cmp_isolated "${CMAKE_BINARY_DIR}/vcpkg")
+        set(_cmp_shared "${_default_dir}/vcpkg")
+        if(CMAKE_HOST_WIN32)
+          string(TOLOWER "${_cmp_root};${_cmp_isolated};${_cmp_shared}" _lower)
+          list(GET _lower 0 _cmp_root)
+          list(GET _lower 1 _cmp_isolated)
+          list(GET _lower 2 _cmp_shared)
+        endif()
+        set(_before_from_env TRUE)
+        set(_before_managed FALSE)
+        if(_cmp_root STREQUAL _cmp_isolated)
+          set(_before_from_env FALSE)
+          set(_before_managed TRUE)
+        elseif(_cmp_root STREQUAL _cmp_shared)
+          set(_before_managed TRUE)
+        endif()
+      endif()
+
+      if(_from_env AND _before_from_env AND EXISTS "${_own_toolchain}")
+        # Only the environment differs, and the new location could not take effect anyway: keep
+        # the vcpkg this build directory was configured with instead of failing.
+        message(STATUS
+          "[vcpkg-bootstrap] The environment points to another vcpkg (${_root}) than the one this "
+          "build directory was configured with; keeping ${_before_root}, since CMake only reads "
+          "the toolchain file on the first configure. Delete the build directory to switch.")
+        set(_root "${_before_root}")
+        set(_toolchain "${_own_toolchain}")
+        set(_managed ${_before_managed})
+        set(_source "configured before")
+        set(_env_note "")
+      else()
+        message(FATAL_ERROR
+          "[vcpkg-bootstrap] The vcpkg location changed since this build directory was configured:\n"
+          "  before: ${_own_toolchain}\n"
+          "  now:    ${_toolchain}\n"
+          "CMake only reads the toolchain file on the first configure of a build directory, so the "
+          "change cannot take effect. Delete the build directory (or its CMakeCache.txt) and configure again.")
+      endif()
     endif()
+  endif()
+
+  if(_env_note)
+    message(STATUS "${_env_note}")
   endif()
 
   message(STATUS "[vcpkg-bootstrap] Using vcpkg (${_source}): ${_root}")
@@ -895,6 +952,8 @@ function(_vcpkg_bootstrap_main)
   # Install locations are vcpkg's defaults: manifest mode -> ${CMAKE_BINARY_DIR}/vcpkg_installed,
   # classic mode -> <vcpkg root>/installed (inside the build directory in isolated mode).
   set(_VCPKG_BOOTSTRAP_TOOLCHAIN_FILE "${_toolchain}" CACHE INTERNAL "")
+  set(_VCPKG_BOOTSTRAP_FROM_ENV ${_from_env} CACHE INTERNAL "")
+  set(_VCPKG_BOOTSTRAP_MANAGED ${_managed} CACHE INTERNAL "")
   set(CMAKE_TOOLCHAIN_FILE "${_toolchain}" CACHE FILEPATH "vcpkg toolchain (set by vcpkg-bootstrap)" FORCE)
 
   _vcpkg_bootstrap_activate("${_root}")

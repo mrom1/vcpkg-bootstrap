@@ -162,6 +162,12 @@ cmake -S . -B build -DFETCHCONTENT_SOURCE_DIR_VCPKG_BOOTSTRAP=/path/to/vcpkg-boo
 - **"configured before without vcpkg's toolchain"** / **"The vcpkg location changed"**: CMake
   reads the toolchain file only on the first configure of a build folder. Delete the build
   folder (or its `CMakeCache.txt`) and configure again.
+- **"The environment points to another vcpkg … keeping …"**: the same build folder was
+  configured from a different shell, e.g. once from a plain terminal and once from a Visual
+  Studio developer prompt (or an IDE that loads it, like VS Code's CMake Tools), which sets
+  `VCPKG_ROOT` to its bundled vcpkg. When only the environment differs, the vcpkg the folder was
+  configured with is kept. A location you choose with a setting (`VCPKG_BOOTSTRAP_ROOT_DIR`,
+  `VCPKG_BOOTSTRAP_ISOLATED`, `VCPKG_BOOTSTRAP_INSTALL_DIR`) still fails with the error above.
 - **"older than builtin-baseline"**: your own vcpkg (`VCPKG_ROOT`, `VCPKG_BOOTSTRAP_ROOT_DIR`) is
   outdated: `git -C <vcpkg> pull`, then run its `bootstrap-vcpkg` script.
 - **Included after `project()`**: the script only warns and does nothing; move it before the first
