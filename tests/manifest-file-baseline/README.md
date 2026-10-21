@@ -2,19 +2,29 @@
 
 **Cases V7, V10.** `vcpkg.json` pins a `builtin-baseline` (vcpkg release `2026.07.29`), the
 recommended way to get reproducible builds. vcpkg reads the versions database from its working
-tree, so a vcpkg managed by vcpkg-bootstrap must contain the baseline commit.
+tree, so a vcpkg managed by vcpkg-bootstrap must contain the baseline commit. vcpkg's own
+version is part of every package's ABI hash, so new and isolated clones are put on exactly the
+baseline (same packages from the binary cache in every build directory).
 
 - **A:** fresh managed clone (`-DVCPKG_BOOTSTRAP_INSTALL_DIR=<run dir>/managed`). Expected:
-  `[vcpkg-bootstrap] Cloning`, `[vcpkg-bootstrap] Bootstrapping`; the clone's HEAD contains the
-  baseline; build, run: `Hello World!`.
+  `[vcpkg-bootstrap] Cloning`, `Checking out builtin-baseline <baseline>`, `Bootstrapping`;
+  the clone's HEAD is exactly the baseline (not vcpkg's latest commit); build, run: `Hello World!`.
 - **B:** an existing managed clone that is older than the baseline: full history up to
   release `2025.12.12`, without the baseline commit (what a clone made months ago looks like).
   Expected: `[vcpkg-bootstrap] Fetching vcpkg (need <baseline>)`,
   `Updating vcpkg to builtin-baseline`, `Bootstrapping`; no new clone; HEAD now contains the
   baseline; build, run: `Hello World!`.
 - **C:** a second configure of B does not clone, fetch or bootstrap.
+- **D:** an existing shared clone that is newer than the baseline (vcpkg's `master`). Expected:
+  no clone, fetch, checkout or bootstrap; HEAD stays where it was (the shared clone serves other
+  projects and only moves forward); build, run: `Hello World!`.
+- **E:** an existing isolated clone (`<build>/vcpkg`, `-DVCPKG_BOOTSTRAP_ISOLATED=ON`) that is
+  newer than the baseline. Expected: `Checking out builtin-baseline <baseline>`, `Bootstrapping`;
+  no new clone; HEAD is exactly the baseline; build, run: `Hello World!`.
+- **F:** a second configure of E does not clone, fetch, check out or bootstrap.
 
-Mode: shared only, with its own managed directories in the run directory (independent of the user cache).
+Mode: shared, with its own managed directories in the run directory (independent of the user
+cache); E and F set isolated mode themselves.
 
 ## By hand
 
