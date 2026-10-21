@@ -124,9 +124,13 @@ It is cloned and bootstrapped once and shared by all projects and build folders.
 - **Ports:** set `builtin-baseline` in `vcpkg.json` for reproducible builds
   (`vcpkg x-update-baseline --add-initial-baseline`). Without a baseline, versions come from
   whatever commit the vcpkg checkout is on — not "the latest".
-- If a vcpkg clone made by the script does not contain your baseline yet, it is fetched once,
-  moved forward to the baseline and bootstrapped again. Otherwise configure does not go to the
-  network for vcpkg itself.
+- vcpkg itself is put on the commit of your baseline: a new clone and the isolated clone
+  (`<build>/vcpkg`) are checked out at exactly the baseline. vcpkg's own scripts and tools are
+  part of every package's ABI hash, so this keeps builds reproducible and lets every build
+  folder reuse packages from vcpkg's binary cache instead of rebuilding them.
+- The shared clone serves other projects too, so it only ever moves forward: if it does not
+  contain your baseline yet, it is fetched once, moved to the baseline and bootstrapped again.
+- Otherwise configure does not go to the network for vcpkg itself.
 - **vcpkg itself:** `-DVCPKG_BOOTSTRAP_REF=<tag or commit>` checks out that vcpkg release in a
   clone made by the script. The shared clone is shared, so give projects that pin different refs
   their own `VCPKG_BOOTSTRAP_INSTALL_DIR` (or use isolated mode).
