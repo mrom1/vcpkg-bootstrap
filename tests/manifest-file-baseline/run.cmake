@@ -1,8 +1,11 @@
 # manifest-file-baseline
 #
-# vcpkg.json pins a builtin-baseline. A: a fresh managed clone contains the baseline and builds.
-# B: an existing managed clone that is older than the baseline is fetched, moved forward to the
-# baseline and bootstrapped again. C: a second configure of B does nothing of that again.
+# vcpkg.json pins a builtin-baseline. A: a fresh managed clone is checked out at exactly the
+# baseline and builds. B: an existing managed clone that is older than the baseline is fetched,
+# moved forward to the baseline and bootstrapped again. C: a second configure of B does nothing
+# of that again. D: an existing shared clone newer than the baseline is left alone. E: an
+# existing isolated clone newer than the baseline is moved back to exactly the baseline.
+# F: a second configure of E does nothing of that again.
 #
 #   cmake -DVB_SCRIPT_DIR=<checkout of main> -P tests/manifest-file-baseline/run.cmake
 
@@ -263,17 +266,55 @@ function(git_ok out dir)
   endif()
 endfunction()
 
+# head_of(<out> <dir>): the commit checked out in <dir>.
+function(head_of out dir)
+  execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${dir}"
+    OUTPUT_VARIABLE head OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(${out} "${head}" PARENT_SCOPE)
+endfunction()
+
+# expect_head(<dir> <commit>): <dir> is checked out at exactly <commit>.
+function(expect_head dir commit)
+  head_of(head "${dir}")
+  if(NOT head STREQUAL commit)
+    fail("${dir} is at '${head}', expected exactly ${commit}")
+  endif()
+endfunction()
+
+# newer_clone(<step> <dir>): a clone of vcpkg's master, which is newer than the baseline: what a
+# clone made after the baseline release looks like. Cloned from A's checkout (it still has the
+# master branch from its own clone) to save the download, then bootstrapped.
+function(newer_clone name dir)
+  file(TO_NATIVE_PATH "${MANAGED}/vcpkg" local_source)
+  step(clone-${name} SUCCESS COMMAND git -c advice.detachedHead=false clone --quiet --no-local
+    --branch master "${local_source}" "${dir}")
+  step(set-origin-${name} SUCCESS WORKING_DIRECTORY "${dir}"
+    COMMAND git remote set-url origin https://github.com/microsoft/vcpkg.git)
+  head_of(head "${dir}")
+  git_ok(contains_new "${dir}" merge-base --is-ancestor ${NEW} HEAD)
+  if(head STREQUAL NEW OR NOT contains_new)
+    fail("test setup: ${dir} is at '${head}', expected a commit newer than ${NEW}")
+  endif()
+  if(CMAKE_HOST_WIN32)
+    step(bootstrap-${name} SUCCESS WORKING_DIRECTORY "${dir}" COMMAND cmd /c "${dir}/bootstrap-vcpkg.bat" -disableMetrics)
+  else()
+    step(bootstrap-${name} SUCCESS WORKING_DIRECTORY "${dir}" COMMAND sh "${dir}/bootstrap-vcpkg.sh" -disableMetrics)
+  endif()
+  set(STEP "${STEP}" PARENT_SCOPE)
+  set(LOG "${LOG}" PARENT_SCOPE)
+  set(LOG_FILE "${LOG_FILE}" PARENT_SCOPE)
+endfunction()
+
 # A: fresh managed clone (own install dir, independent of the user cache)
 set(MANAGED "${RUN_DIR}/managed")
 set(BUILD_A "${RUN_DIR}/build-fresh")
 configure(fresh "${CASE_DIR}" "${BUILD_A}" ARGS "-DVCPKG_BOOTSTRAP_INSTALL_DIR=${MANAGED}"
-  CONTAINS "\\[vcpkg-bootstrap\\] Cloning" "\\[vcpkg-bootstrap\\] Bootstrapping")
+  CONTAINS "\\[vcpkg-bootstrap\\] Cloning"
+           "\\[vcpkg-bootstrap\\] Checking out builtin-baseline ${NEW}"
+           "\\[vcpkg-bootstrap\\] Bootstrapping")
 cache_get(root "${BUILD_A}" VCPKG_BOOTSTRAP_ROOT)
 expect_same_path("VCPKG_BOOTSTRAP_ROOT" "${root}" "${MANAGED}/vcpkg")
-git_ok(has_new "${MANAGED}/vcpkg" merge-base --is-ancestor ${NEW} HEAD)
-if(NOT has_new)
-  fail("HEAD of ${MANAGED}/vcpkg does not contain the baseline ${NEW}")
-endif()
+expect_head("${MANAGED}/vcpkg" ${NEW})
 build(fresh "${BUILD_A}")
 run_main(fresh "${BUILD_A}")
 
@@ -321,5 +362,36 @@ run_main(old-clone "${BUILD_B}")
 reconfigure_check(old-clone-second "${CASE_DIR}" "${BUILD_B}" "-DVCPKG_BOOTSTRAP_INSTALL_DIR=${MANAGED2}")
 build(old-clone-second "${BUILD_B}")
 run_main(old-clone-second "${BUILD_B}")
+
+# D: an existing shared clone that is newer than the baseline is left alone: other projects may
+# need its newer commit, and it only ever moves forward.
+set(MANAGED3 "${RUN_DIR}/managed3")
+newer_clone(newer-shared "${MANAGED3}/vcpkg")
+head_of(newer_head "${MANAGED3}/vcpkg")
+set(BUILD_D "${RUN_DIR}/build-newer-shared")
+configure(newer-shared "${CASE_DIR}" "${BUILD_D}" ARGS "-DVCPKG_BOOTSTRAP_INSTALL_DIR=${MANAGED3}"
+  NOT_CONTAINS "\\[vcpkg-bootstrap\\] (Cloning|Fetching|Checking out|Updating|Bootstrapping)")
+expect_head("${MANAGED3}/vcpkg" ${newer_head})
+build(newer-shared "${BUILD_D}")
+run_main(newer-shared "${BUILD_D}")
+
+# E: an existing isolated clone that is newer than the baseline belongs to this build directory
+# alone: it is moved back to exactly the baseline (vcpkg's version is part of the package ABI
+# hashes) and bootstrapped again.
+set(BUILD_E "${RUN_DIR}/build-newer-isolated")
+newer_clone(newer-isolated "${BUILD_E}/vcpkg")
+configure(newer-isolated "${CASE_DIR}" "${BUILD_E}" NO_ISOLATED ARGS "-DVCPKG_BOOTSTRAP_ISOLATED=ON"
+  CONTAINS "\\[vcpkg-bootstrap\\] Checking out builtin-baseline ${NEW}"
+           "\\[vcpkg-bootstrap\\] Bootstrapping"
+  NOT_CONTAINS "\\[vcpkg-bootstrap\\] (Cloning|Updating)")
+cache_get(root "${BUILD_E}" VCPKG_BOOTSTRAP_ROOT)
+expect_same_path("VCPKG_BOOTSTRAP_ROOT" "${root}" "${BUILD_E}/vcpkg")
+expect_head("${BUILD_E}/vcpkg" ${NEW})
+build(newer-isolated "${BUILD_E}")
+run_main(newer-isolated "${BUILD_E}")
+
+# F: a second configure of E does not check out or bootstrap again
+reconfigure_check(newer-isolated-second "${CASE_DIR}" "${BUILD_E}")
+expect_head("${BUILD_E}/vcpkg" ${NEW})
 
 message(STATUS "PASSED ${CASE} (${MODE})")
