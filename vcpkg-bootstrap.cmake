@@ -242,7 +242,9 @@ function(_vcpkg_bootstrap_check_external root)
 endfunction()
 
 # Script-owned vcpkg: clone, fetch, check out and bootstrap as needed.
-function(_vcpkg_bootstrap_ensure_managed root)
+# <exact>: TRUE if the checkout belongs to this build directory alone (isolated mode), so it may
+# be moved to exactly the builtin-baseline in either direction.
+function(_vcpkg_bootstrap_ensure_managed root exact)
   if(NOT GIT_EXECUTABLE)
     message(FATAL_ERROR "[vcpkg-bootstrap] git is required to clone vcpkg but was not found.")
   endif()
@@ -260,6 +262,7 @@ function(_vcpkg_bootstrap_ensure_managed root)
   message(CHECK_PASS "done")
 
   set(_need_bootstrap FALSE)
+  set(_cloned FALSE)
 
   if(NOT EXISTS "${root}")
     # Full clone (no --depth): manifest versioning needs the registry history.
@@ -282,6 +285,7 @@ function(_vcpkg_bootstrap_ensure_managed root)
     file(RENAME "${_tmp}" "${root}")
     message(CHECK_PASS "done")
     set(_need_bootstrap TRUE)
+    set(_cloned TRUE)
   elseif(NOT EXISTS "${root}/.vcpkg-root" OR NOT EXISTS "${root}/.git")
     message(FATAL_ERROR
       "[vcpkg-bootstrap] '${root}' exists but is not a vcpkg git checkout. "
@@ -329,14 +333,31 @@ function(_vcpkg_bootstrap_ensure_managed root)
     endif()
   endif()
 
-  if(_baseline)
+  if(_baseline AND VCPKG_BOOTSTRAP_REF)
     _vcpkg_bootstrap_head_contains("${root}" "${_baseline}" _ok)
-    if(NOT _ok AND VCPKG_BOOTSTRAP_REF)
+    if(NOT _ok)
       message(WARNING
         "[vcpkg-bootstrap] VCPKG_BOOTSTRAP_REF ${VCPKG_BOOTSTRAP_REF} is older than builtin-baseline "
         "${_baseline}, so vcpkg will likely fail to resolve versions.")
-    elseif(NOT _ok)
-      # Only ever moves forward: an older baseline is already contained in HEAD.
+    endif()
+  elseif(_baseline AND (_cloned OR exact))
+    # Exactly the baseline: vcpkg's own scripts and tool versions are part of the ABI hashes of
+    # every package, so a checkout on another commit misses the binary cache and rebuilds
+    # packages (Qt, Boost, ...) that were already built with this baseline. A fresh clone is
+    # not used by anyone yet, an isolated one belongs to this build directory alone.
+    _vcpkg_bootstrap_git(rev-parse HEAD WORKING_DIRECTORY "${root}" OUTPUT _head)
+    _vcpkg_bootstrap_git(rev-parse "${_baseline}^{commit}" WORKING_DIRECTORY "${root}" OUTPUT _target)
+    if(NOT _head STREQUAL _target)
+      message(STATUS "[vcpkg-bootstrap] Checking out builtin-baseline ${_baseline}")
+      _vcpkg_bootstrap_git(-c advice.detachedHead=false checkout --detach "${_target}"
+        WORKING_DIRECTORY "${root}")
+      set(_need_bootstrap TRUE)
+    endif()
+  elseif(_baseline)
+    # The shared clone serves other projects with other baselines, possibly while they run
+    # vcpkg: it only ever moves forward. An older baseline is already contained in HEAD.
+    _vcpkg_bootstrap_head_contains("${root}" "${_baseline}" _ok)
+    if(NOT _ok)
       message(STATUS "[vcpkg-bootstrap] Updating vcpkg to builtin-baseline ${_baseline}")
       _vcpkg_bootstrap_git(-c advice.detachedHead=false checkout --detach "${_baseline}"
         WORKING_DIRECTORY "${root}")
@@ -929,7 +950,11 @@ function(_vcpkg_bootstrap_main)
 
   message(STATUS "[vcpkg-bootstrap] Using vcpkg (${_source}): ${_root}")
   if(_managed)
-    _vcpkg_bootstrap_ensure_managed("${_root}")
+    set(_exact FALSE)
+    if(_source STREQUAL "isolated")
+      set(_exact TRUE)
+    endif()
+    _vcpkg_bootstrap_ensure_managed("${_root}" ${_exact})
   else()
     _vcpkg_bootstrap_check_external("${_root}")
   endif()
