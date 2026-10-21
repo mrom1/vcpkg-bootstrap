@@ -174,6 +174,12 @@ cmake -S . -B build -DFETCHCONTENT_SOURCE_DIR_VCPKG_BOOTSTRAP=/path/to/vcpkg-boo
   `VCPKG_BOOTSTRAP_ISOLATED`, `VCPKG_BOOTSTRAP_INSTALL_DIR`) still fails with the error above.
 - **"older than builtin-baseline"**: your own vcpkg (`VCPKG_ROOT`, `VCPKG_BOOTSTRAP_ROOT_DIR`) is
   outdated: `git -C <vcpkg> pull`, then run its `bootstrap-vcpkg` script.
+- **"These ports will likely fail to build from source on Windows"**: some ports (Qt, Boost, ...)
+  exceed Windows' 260 character path limit when vcpkg builds them in a deep directory; the limits
+  are vcpkg's own (`vcpkg_buildpath_length_warning`). The script checks them before vcpkg runs,
+  for ports not yet installed in the build folder. Packages restored from vcpkg's binary cache
+  are fine; to build such ports, keep vcpkg short, e.g. shared mode with
+  `-DVCPKG_BOOTSTRAP_INSTALL_DIR=C:/src`.
 - **Included after `project()`**: the script only warns and does nothing; move it before the first
   `project()` call.
 - **A package is not installed automatically**: list it in `vcpkg.json`, or call

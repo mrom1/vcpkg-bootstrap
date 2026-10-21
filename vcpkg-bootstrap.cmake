@@ -415,6 +415,117 @@ endfunction()
 
 
 #######################################################################################
+## Helpers: Windows path lengths                                                     ##
+#######################################################################################
+
+# Appends to <list_var> the port names of the JSON array at <member>... in <json>; entries are
+# names or objects with a "name" ("dependencies", "default-features").
+function(_vcpkg_bootstrap_json_names json list_var)
+  set(_names "${${list_var}}")
+  string(JSON _count ERROR_VARIABLE _err LENGTH "${json}" ${ARGN})
+  if(NOT _err AND _count GREATER 0)
+    math(EXPR _last "${_count} - 1")
+    foreach(_i RANGE ${_last})
+      string(JSON _type TYPE "${json}" ${ARGN} ${_i})
+      if(_type STREQUAL "STRING")
+        string(JSON _name GET "${json}" ${ARGN} ${_i})
+      else()
+        string(JSON _name ERROR_VARIABLE _name_err GET "${json}" ${ARGN} ${_i} "name")
+      endif()
+      if(_name)
+        list(APPEND _names "${_name}")
+      endif()
+    endforeach()
+  endif()
+  set(${list_var} "${_names}" PARENT_SCOPE)
+endfunction()
+
+# Some ports fail to build beyond Windows' 260 character path limit. vcpkg knows which (they
+# call vcpkg_buildpath_length_warning(<max>) with the longest <buildtrees>/<port> they tolerate)
+# but warns only from inside the port build, deep in its output, after downloading and
+# extracting the sources. Do the same check before vcpkg runs, for the ports the manifest
+# installs and that are not installed in this build directory yet.
+function(_vcpkg_bootstrap_check_path_lengths root hint)
+  if(NOT CMAKE_HOST_WIN32 OR NOT IS_DIRECTORY "${root}/ports")
+    return()
+  endif()
+  if(DEFINED VCPKG_MANIFEST_MODE AND NOT VCPKG_MANIFEST_MODE)
+    return()
+  endif()
+  _vcpkg_bootstrap_manifest_file(_manifest)
+  if(NOT _manifest)
+    return()
+  endif()
+  file(READ "${_manifest}" _json)
+
+  # What the manifest asks for: its dependencies and those of the enabled features.
+  set(_features ${VCPKG_MANIFEST_FEATURES})
+  if(NOT VCPKG_MANIFEST_NO_DEFAULT_FEATURES)
+    _vcpkg_bootstrap_json_names("${_json}" _features "default-features")
+  endif()
+  set(_queue "")
+  _vcpkg_bootstrap_json_names("${_json}" _queue "dependencies")
+  foreach(_feature IN LISTS _features)
+    _vcpkg_bootstrap_json_names("${_json}" _queue "features" "${_feature}" "dependencies")
+  endforeach()
+
+  # Follow the ports' own dependencies and default features (an approximation of vcpkg's plan:
+  # platform expressions and features requested by dependents are not evaluated).
+  set(_ports "")
+  while(_queue)
+    list(POP_FRONT _queue _port)
+    if(_port IN_LIST _ports OR NOT EXISTS "${root}/ports/${_port}/vcpkg.json")
+      continue()
+    endif()
+    list(APPEND _ports "${_port}")
+    file(READ "${root}/ports/${_port}/vcpkg.json" _port_json)
+    _vcpkg_bootstrap_json_names("${_port_json}" _queue "dependencies")
+    set(_port_features "")
+    _vcpkg_bootstrap_json_names("${_port_json}" _port_features "default-features")
+    foreach(_feature IN LISTS _port_features)
+      _vcpkg_bootstrap_json_names("${_port_json}" _queue "features" "${_feature}" "dependencies")
+    endforeach()
+  endwhile()
+
+  set(_buildtrees "${root}/buildtrees")
+  foreach(_option IN LISTS VCPKG_INSTALL_OPTIONS)
+    if(_option MATCHES "^--x-buildtrees-root=(.+)$")
+      file(TO_CMAKE_PATH "${CMAKE_MATCH_1}" _buildtrees)
+    endif()
+  endforeach()
+  if(VCPKG_INSTALLED_DIR)
+    set(_installed "${VCPKG_INSTALLED_DIR}")
+  else()
+    set(_installed "${CMAKE_BINARY_DIR}/vcpkg_installed")
+  endif()
+
+  set(_too_long "")
+  foreach(_port IN LISTS _ports)
+    file(STRINGS "${root}/ports/${_port}/portfile.cmake" _line LIMIT_COUNT 1
+         REGEX "vcpkg_buildpath_length_warning\\([0-9]+\\)")
+    if(NOT _line MATCHES "vcpkg_buildpath_length_warning\\(([0-9]+)\\)")
+      continue()
+    endif()
+    set(_max "${CMAKE_MATCH_1}")
+    string(LENGTH "${_buildtrees}/${_port}" _length)
+    file(GLOB _installed_lists "${_installed}/vcpkg/info/${_port}_*.list")
+    if(_length GREATER _max AND NOT _installed_lists)
+      string(APPEND _too_long "\n  ${_port}: ${_buildtrees}/${_port} has ${_length} characters, at most ${_max} work")
+    endif()
+  endforeach()
+
+  if(_too_long)
+    message(WARNING
+      "[vcpkg-bootstrap] These ports will likely fail to build from source on Windows, because "
+      "their build directories exceed the 260 character path limit (vcpkg's own limits):"
+      "${_too_long}\n"
+      "Packages vcpkg restores from its binary cache are not affected, so this only matters for "
+      "packages built here for the first time.\n${hint}")
+  endif()
+endfunction()
+
+
+#######################################################################################
 ## Helpers: installing ports                                                         ##
 #######################################################################################
 
@@ -958,6 +1069,18 @@ function(_vcpkg_bootstrap_main)
   else()
     _vcpkg_bootstrap_check_external("${_root}")
   endif()
+
+  if(_source STREQUAL "isolated")
+    string(CONCAT _hint "In isolated mode vcpkg lives in the build directory. To build them, use "
+                        "shared mode with a short location: -DVCPKG_BOOTSTRAP_ISOLATED=OFF "
+                        "-DVCPKG_BOOTSTRAP_INSTALL_DIR=C:/src")
+  elseif(_managed)
+    set(_hint "To build them, keep vcpkg in a short location: -DVCPKG_BOOTSTRAP_INSTALL_DIR=C:/src")
+  else()
+    string(CONCAT _hint "To build them, move this vcpkg to a short path such as C:/src/vcpkg "
+                        "(vcpkg's recommendation) or use the subst command.")
+  endif()
+  _vcpkg_bootstrap_check_path_lengths("${_root}" "${_hint}")
 
   # --- Keep a user toolchain (cross-compiling, Conan, ...) by chainloading it ----------
   if(_user_toolchain)
