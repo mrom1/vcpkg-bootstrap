@@ -745,9 +745,13 @@ endfunction()
 # Dependency provider for find_package(). A macro, so a successful pre-check sets the result
 # variables in the caller's scope exactly like find_package() would.
 # vcpkg has the lowest priority: if the package is found anywhere else, that one is used.
-# If this provider does not set <Package>_FOUND, CMake continues with its built-in
-# find_package() using the caller's original arguments.
+# If <Package>_FOUND is not true after this provider, CMake continues with its built-in
+# find_package() using the caller's original arguments. A value already there counts as
+# well: one from an earlier find_package() of the same package (e.g. other components), or
+# a cached one (pkg_check_modules() caches <prefix>_FOUND, and the prefix is often the
+# package name). So it is set to FALSE first; a normal variable also hides a cached one.
 macro(_vcpkg_bootstrap_provide _vb_method _vb_package)
+  set(${_vb_package}_FOUND FALSE)
   set(_vb_args ${ARGN})
   get_property(_vb_busy GLOBAL PROPERTY _VCPKG_BOOTSTRAP_PROVIDER_BUSY)
   if(NOT _vb_busy AND NOT VCPKG_MANIFEST_MODE)
