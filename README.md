@@ -40,6 +40,7 @@ Modes: **shared** = `VCPKG_BOOTSTRAP_ISOLATED=OFF` (vcpkg in the per-user cache 
 | [`install-function-manifest-mode`](tests/install-function-manifest-mode) | `vcpkg_bootstrap_install()` is a no-op with a warning in manifest mode, and fails before `project()` | shared |
 | [`find-package-fallback`](tests/find-package-fallback) | Plain `find_package(... REQUIRED)` installs the matching vcpkg port if the package is not found elsewhere | shared, isolated |
 | [`find-package-guard`](tests/find-package-guard) | Meta-ports, `QUIET` probes and unknown packages are never installed | shared |
+| [`find-package-provider-found`](tests/find-package-provider-found) | A `find_package()` the fallback does not answer is searched by CMake even when `<Package>_FOUND` is already true (other components, cached by an earlier configure) | shared |
 | [`conan-toolchain`](tests/conan-toolchain) | `conan_toolchain.cmake` is chainloaded; Conan's package wins, vcpkg fills the rest | shared |
 | [`conan-provider`](tests/conan-provider) | cmake-conan's provider wins over the fallback; explicit installs still work | shared |
 | [`chainload-toolchain`](tests/chainload-toolchain) | A user toolchain (`-D` or `ENV{CMAKE_TOOLCHAIN_FILE}`) is chainloaded | shared |

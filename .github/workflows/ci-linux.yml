@@ -43,6 +43,7 @@ jobs:
           - { case: find-package-fallback,          isolated: "OFF" }
           - { case: find-package-fallback,          isolated: "ON"  }
           - { case: find-package-guard,             isolated: "OFF" }
+          - { case: find-package-provider-found,    isolated: "OFF" }
           - { case: conan-toolchain,                isolated: "OFF" }
           - { case: conan-provider,                 isolated: "OFF" }
           - { case: chainload-toolchain,            isolated: "OFF" }
