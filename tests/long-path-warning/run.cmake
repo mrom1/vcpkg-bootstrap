@@ -295,4 +295,21 @@ if(CMAKE_HOST_WIN32)
     NOT_CONTAINS "\\[vcpkg-bootstrap\\] Cloning")
 endif()
 
+# D, E (Windows): the "platform" of dependencies is evaluated for the target triplet
+# (platform/vcpkg.json). D: eigen3 only for "!windows" is not installed here, so no warning.
+# E: eigen3 for "windows & (x64 | arm64) & !uwp" is, so the warning. vcpkg is copied from A.
+if(CMAKE_HOST_WIN32)
+  set(steps not-windows windows-desktop)
+  set(expects NOT_CONTAINS CONTAINS)
+  foreach(feature expect IN ZIP_LISTS steps expects)
+    set(build "${RUN_DIR}/build-platform-${feature}")
+    file(TO_NATIVE_PATH "${BUILD_A}/vcpkg" local_source)
+    step(clone-${feature} SUCCESS COMMAND git -c advice.detachedHead=false clone --quiet --no-local
+      "${local_source}" "${build}/vcpkg")
+    configure(platform-${feature} "${CASE_DIR}/platform" "${build}"
+      ARGS "-DVCPKG_MANIFEST_FEATURES=${feature}"
+      ${expect} "${WARNING_RE}")
+  endforeach()
+endif()
+
 message(STATUS "PASSED ${CASE} (${MODE})")

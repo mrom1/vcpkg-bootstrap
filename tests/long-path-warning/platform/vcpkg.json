@@ -1,0 +1,18 @@
+{
+  "dependencies": [],
+  "features": {
+    "not-windows": {
+      "description": "eigen3 everywhere but on Windows",
+      "dependencies": [
+        { "name": "eigen3", "platform": "!windows" }
+      ]
+    },
+    "windows-desktop": {
+      "description": "eigen3 on Windows desktop, x64 or arm64",
+      "dependencies": [
+        { "name": "eigen3", "platform": "windows & (x64 | arm64) & !uwp" }
+      ]
+    }
+  },
+  "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+}
