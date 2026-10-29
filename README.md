@@ -71,6 +71,17 @@ Choose the mode on the first configure of a build folder (`-DVCPKG_BOOTSTRAP_ISO
 remembered; changing it later in the same build folder is refused with an error (see
 [Troubleshooting](#troubleshooting)).
 
+### Windows: path lengths
+
+A build folder is usually deeper than vcpkg's own directory, and some ports exceed Windows' 260
+character path limit there (see [Troubleshooting](#troubleshooting)). To give ports more room, the
+script has vcpkg build them with short intermediate directories on Windows: CMake 4.2+ (current
+vcpkg) puts objects into `<build>/.o/<hash>/<hash>.obj` instead of
+`<build>/CMakeFiles/<target>.dir/<source>.obj` (`CMAKE_INTERMEDIATE_DIR_STRATEGY=SHORT`). It is
+passed through vcpkg's build environment (`VCPKG_KEEP_ENV_VARS`), does not change the package ABI
+and does not affect your own project; set `CMAKE_INTERMEDIATE_DIR_STRATEGY` in your environment to
+override it. Ports whose own file names are too long for the location still fail.
+
 ## Where vcpkg comes from
 
 The first match wins:
@@ -176,10 +187,16 @@ cmake -S . -B build -DFETCHCONTENT_SOURCE_DIR_VCPKG_BOOTSTRAP=/path/to/vcpkg-boo
   outdated: `git -C <vcpkg> pull`, then run its `bootstrap-vcpkg` script.
 - **"These ports will likely fail to build from source on Windows"**: some ports (Qt, Boost, ...)
   exceed Windows' 260 character path limit when vcpkg builds them in a deep directory; the limits
-  are vcpkg's own (`vcpkg_buildpath_length_warning`). The script checks them before vcpkg runs,
-  for ports not yet installed in the build folder. Packages restored from vcpkg's binary cache
-  are fine; to build such ports, keep vcpkg short, e.g. shared mode with
-  `-DVCPKG_BOOTSTRAP_INSTALL_DIR=C:/src`.
+  are vcpkg's own ([`vcpkg_buildpath_length_warning`](https://learn.microsoft.com/vcpkg/maintainers/functions/vcpkg_buildpath_length_warning)).
+  The script checks them before vcpkg runs, for ports not yet installed in the build folder
+  (overlay ports included). The limit comes from MSVC: its compiler (`cl.exe`) cannot open longer
+  paths, not even with Windows' [long path support](https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation)
+  enabled. Packages restored from vcpkg's binary cache are fine. To build such ports, keep vcpkg in
+  a short directory, as vcpkg recommends: shared mode with
+  `-DVCPKG_BOOTSTRAP_INSTALL_DIR=<short directory>` (isolated mode keeps vcpkg in the build folder).
+  Or build with a compiler that supports long paths, such as clang-cl, with Windows' long path
+  support enabled, for the project and all its C++ dependencies (C++ libraries built with MSVC and
+  clang-cl cannot always be mixed; Qt cannot).
 - **Included after `project()`**: the script only warns and does nothing; move it before the first
   `project()` call.
 - **A package is not installed automatically**: list it in `vcpkg.json`, or call
