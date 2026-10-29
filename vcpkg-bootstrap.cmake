@@ -981,7 +981,13 @@ function(_vcpkg_bootstrap_main)
   set(_env_note "")
   if(NOT VCPKG_BOOTSTRAP_ROOT_DIR AND NOT VCPKG_BOOTSTRAP_ISOLATED AND NOT "$ENV{VCPKG_ROOT}" STREQUAL "")
     file(TO_CMAKE_PATH "$ENV{VCPKG_ROOT}" _env_root)
-    if(EXISTS "${_env_root}/vcpkg-bundle.json" OR NOT IS_DIRECTORY "${_env_root}/ports")
+    if(NOT EXISTS "${_env_root}/scripts/buildsystems/vcpkg.cmake")
+      # A leftover setting (the vcpkg was moved or deleted): not a reason to fail.
+      message(STATUS
+        "[vcpkg-bootstrap] Ignoring ENV{VCPKG_ROOT} (${_env_root}): not a vcpkg root (no "
+        "scripts/buildsystems/vcpkg.cmake). Using a vcpkg managed by vcpkg-bootstrap instead.")
+      set(_env_root "")
+    elseif(EXISTS "${_env_root}/vcpkg-bundle.json" OR NOT IS_DIRECTORY "${_env_root}/ports")
       _vcpkg_bootstrap_manifest_file(_manifest)
       _vcpkg_bootstrap_read_baseline(_baseline)
       set(_registry_config FALSE)
