@@ -266,7 +266,9 @@ if(CMAKE_HOST_WIN32)
   configure(first "${CASE_DIR}" "${BUILD_A}"
     CONTAINS "${WARNING_RE}"
              "eigen3: ${buildtrees_re} has [0-9]+ characters, at most 37 work"
-             "-DVCPKG_BOOTSTRAP_ISOLATED=OFF -DVCPKG_BOOTSTRAP_INSTALL_DIR=C:/src")
+             "This is a limitation of MSVC, not of vcpkg-bootstrap"
+             "-DVCPKG_BOOTSTRAP_ISOLATED=OFF -DVCPKG_BOOTSTRAP_INSTALL_DIR=<short directory>"
+             "such as clang-cl")
 else()
   configure(first "${CASE_DIR}" "${BUILD_A}" NOT_CONTAINS "${WARNING_RE}")
 endif()
