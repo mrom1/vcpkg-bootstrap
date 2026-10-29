@@ -1,0 +1,16 @@
+{
+  "name": "vb-deep-objects",
+  "version": "1.0.0",
+  "description": "Test port whose object files exceed Windows' 260 character path limit in CMake's default build layout",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}

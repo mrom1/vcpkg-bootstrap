@@ -36,6 +36,7 @@ Modes: **shared** = `VCPKG_BOOTSTRAP_ISOLATED=OFF` (vcpkg in the per-user cache 
 | [`include-file`](tests/include-file) | `vcpkg-bootstrap.cmake` copied into the project and included before `project()`, no FetchContent | shared, isolated |
 | [`manifest-file-baseline`](tests/manifest-file-baseline) | `builtin-baseline`: a managed vcpkg older than the baseline is fetched, moved forward and re-bootstrapped; new and isolated clones are on exactly the baseline | shared |
 | [`long-path-warning`](tests/long-path-warning) | On Windows, ports whose build directories exceed the path limit (vcpkg's own limits) are named before vcpkg runs | isolated |
+| [`long-path-build`](tests/long-path-build) | On Windows, a port whose objects exceed the path limit in CMake's default layout builds in the deep isolated vcpkg (short intermediate directories); with the user's `CMAKE_INTERMEDIATE_DIR_STRATEGY=FULL` it fails | isolated |
 | [`bundled-vcpkg`](tests/bundled-vcpkg) | A bundled vcpkg in `VCPKG_ROOT` (Visual Studio's) is only used for a manifest with a baseline | shared |
 | [`install-function`](tests/install-function) | `vcpkg_bootstrap_install()` installs ports in classic mode into `<vcpkg root>/installed` | shared, isolated |
 | [`install-function-manifest-mode`](tests/install-function-manifest-mode) | `vcpkg_bootstrap_install()` is a no-op with a warning in manifest mode, and fails before `project()` | shared |

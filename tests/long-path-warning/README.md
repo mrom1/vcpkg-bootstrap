@@ -10,7 +10,10 @@ manifest feature enabled with `VCPKG_MANIFEST_FEATURES`.
 - **A:** first configure in isolated mode (vcpkg in `<build>/vcpkg`, far deeper than 37
   characters). Expected on Windows: `[vcpkg-bootstrap] These ports will likely fail to build from
   source on Windows`, naming `eigen3: <build>/vcpkg/buildtrees/eigen3 has <n> characters, at most
-  37 work` and the fix for isolated mode. Elsewhere: no such warning. Build, run: `Hello World!`
+  37 work`, `This is a limitation of MSVC, not of vcpkg-bootstrap`, and both fixes: a short
+  directory (for isolated mode: `-DVCPKG_BOOTSTRAP_ISOLATED=OFF
+  -DVCPKG_BOOTSTRAP_INSTALL_DIR=<short directory>`) or a compiler that supports long paths
+  (clang-cl). Elsewhere: no such warning. Build, run: `Hello World!`
   (eigen3 itself builds fine; its limit is conservative).
 - **B:** a second configure does not warn: eigen3 is installed in the build directory.
 - **C (Windows):** a new build directory with
