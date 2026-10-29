@@ -9,7 +9,10 @@ and ignores those settings, like `VCPKG_ROOT`.
 
 The case points the user profile (`LOCALAPPDATA`, `APPDATA`, `XDG_CACHE_HOME`) and the settings
 (`VCPKG_BINARY_SOURCES`, `VCPKG_DEFAULT_BINARY_CACHE`, `X_VCPKG_REGISTRIES_CACHE`, `VCPKG_DOWNLOADS`)
-to directories in the run directory, and checks that nothing is written there.
+to directories in the run directory, and checks that nothing is written there. The only exception
+is Visual Studio's own telemetry (`%LOCALAPPDATA%\Microsoft\VSApplicationInsights`): Microsoft's
+build tools that vcpkg runs on Windows write it now and then and delete it after sending. It is not
+data of vcpkg or vcpkg-bootstrap, and they cannot turn it off.
 
 - **A:** first configure in isolated mode. Expected: nothing written to the profile or the
   settings' directories (vcpkg installs during the configure), and
