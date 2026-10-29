@@ -263,10 +263,13 @@ set(ENV{VCPKG_DEFAULT_BINARY_CACHE} "${OUTSIDE}/archives")
 set(ENV{X_VCPKG_REGISTRIES_CACHE} "${OUTSIDE}/registries")
 set(ENV{VCPKG_DOWNLOADS} "${OUTSIDE}/downloads")
 
-# expect_empty(<dir>...): no file was written below <dir>.
+# expect_empty(<dir>...): no file was written below <dir>. Except Visual Studio's own telemetry
+# (%LOCALAPPDATA%/Microsoft/VSApplicationInsights): Microsoft's build tools that vcpkg runs on
+# Windows write it now and then, transiently; it is not data of vcpkg or vcpkg-bootstrap.
 function(expect_empty)
   foreach(dir IN LISTS ARGN)
     file(GLOB_RECURSE files "${dir}/*")
+    list(FILTER files EXCLUDE REGEX "/Microsoft/VSApplicationInsights/")
     if(files)
       list(JOIN files "\n  " files)
       fail("files were written outside the build directory, below ${dir}:\n  ${files}")
