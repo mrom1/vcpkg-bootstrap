@@ -32,6 +32,7 @@ Modes: **shared** = `VCPKG_BOOTSTRAP_ISOLATED=OFF` (vcpkg in the per-user cache 
 | --- | --- | --- |
 | [`example`](tests/example) | The project on the `example` branch works as published | shared, isolated |
 | [`manifest-file`](tests/manifest-file) | Standard use: `vcpkg.json` + `find_package()`; vcpkg in the right place; re-configure clones nothing | shared, isolated |
+| [`isolated-caches`](tests/isolated-caches) | Isolated mode writes nothing outside the build directory: vcpkg's binary cache, registry cache and downloads stay in it, settings in the environment that point elsewhere are ignored | isolated |
 | [`include-file`](tests/include-file) | `vcpkg-bootstrap.cmake` copied into the project and included before `project()`, no FetchContent | shared, isolated |
 | [`manifest-file-baseline`](tests/manifest-file-baseline) | `builtin-baseline`: a managed vcpkg older than the baseline is fetched, moved forward and re-bootstrapped; new and isolated clones are on exactly the baseline | shared |
 | [`long-path-warning`](tests/long-path-warning) | On Windows, ports whose build directories exceed the path limit (vcpkg's own limits) are named before vcpkg runs | isolated |

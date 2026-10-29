@@ -32,6 +32,7 @@ jobs:
           - { case: example,                        isolated: "ON"  }
           - { case: manifest-file,                  isolated: "OFF" }
           - { case: manifest-file,                  isolated: "ON"  }
+          - { case: isolated-caches,                isolated: "ON"  }
           - { case: include-file,                   isolated: "OFF" }
           - { case: include-file,                   isolated: "ON"  }
           - { case: manifest-file-baseline,         isolated: "OFF" }
