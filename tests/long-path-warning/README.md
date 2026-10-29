@@ -19,6 +19,10 @@ manifest feature enabled with `VCPKG_MANIFEST_FEATURES`.
 - **C (Windows):** a new build directory with
   `-DVCPKG_INSTALL_OPTIONS=--x-buildtrees-root=<run dir>/custom-buildtrees`. Expected: the warning
   names `<run dir>/custom-buildtrees/eigen3`.
+- **D, E (Windows):** [`platform/`](platform), whose features need eigen3 only on some platforms
+  (`"platform"` of the dependency, evaluated for the target triplet). **D** with the feature
+  `not-windows` (`"!windows"`): no warning. **E** with `windows-desktop`
+  (`"windows & (x64 | arm64) & !uwp"`): the warning.
 
 Mode: isolated only.
 
