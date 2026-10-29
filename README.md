@@ -113,6 +113,8 @@ It is cloned and bootstrapped once and shared by all projects and build folders.
 - **Visual Studio** sets `VCPKG_ROOT` to its bundled vcpkg, which has no ports of its own and
   only works with a `vcpkg.json` that has a `builtin-baseline` (vcpkg's own rule). Without such a
   manifest the script says so and uses the shared clone instead.
+- A `VCPKG_ROOT` that is not a vcpkg root (e.g. a leftover after moving or deleting a vcpkg) is
+  ignored with a note.
 - vcpkg checkouts the script did not create are only read. If one is older than your
   `builtin-baseline`, you get a warning telling you to update it.
 - Clones made by the script are full clones (vcpkg's versioning needs the history). A file lock
