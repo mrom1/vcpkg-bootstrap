@@ -420,8 +420,161 @@ endfunction()
 ## Helpers: Windows path lengths                                                     ##
 #######################################################################################
 
+# vcpkg's platform expressions ("platform" of dependencies and features): the identifiers that
+# are true for the target triplet, from the variables its triplet file sets (vcpkg's definitions,
+# see vcpkg.json's reference). Before project() VCPKG_TARGET_TRIPLET is usually not set yet; then
+# it is vcpkg's default for Windows hosts: <architecture of the generator platform or the
+# host>-windows. <out> is UNKNOWN if the triplet file is not found.
+set(_VCPKG_BOOTSTRAP_PLATFORM_IDENTIFIERS
+  x64 x86 arm arm32 arm64 arm64ec wasm32 mips64 windows mingw uwp xbox linux android ohos apple osx
+  ios tvos watchos visionos bsd freebsd openbsd netbsd solaris emscripten qnx vxworks static
+  staticcrt native)
+
+function(_vcpkg_bootstrap_platform_identifiers root out)
+  set(_arch "$ENV{PROCESSOR_ARCHITECTURE}")
+  string(TOLOWER "${_arch}" _host_arch)
+  if(CMAKE_GENERATOR_PLATFORM)
+    string(TOLOWER "${CMAKE_GENERATOR_PLATFORM}" _arch)
+  else()
+    set(_arch "${_host_arch}")
+  endif()
+  foreach(_var _arch _host_arch)
+    if(${_var} STREQUAL "amd64")
+      set(${_var} x64)
+    elseif(${_var} STREQUAL "win32")
+      set(${_var} x86)
+    endif()
+  endforeach()
+  set(_triplet "${_arch}-windows")
+  set(_host "${_host_arch}-windows")
+  if(VCPKG_TARGET_TRIPLET)
+    set(_triplet "${VCPKG_TARGET_TRIPLET}")
+  endif()
+  if(VCPKG_HOST_TRIPLET)
+    set(_host "${VCPKG_HOST_TRIPLET}")
+  endif()
+
+  set(_file "")
+  set(_dirs ${VCPKG_OVERLAY_TRIPLETS})
+  if(NOT "$ENV{VCPKG_OVERLAY_TRIPLETS}" STREQUAL "")
+    list(APPEND _dirs $ENV{VCPKG_OVERLAY_TRIPLETS})
+  endif()
+  list(APPEND _dirs "${root}/triplets" "${root}/triplets/community")
+  foreach(_dir IN LISTS _dirs)
+    file(TO_CMAKE_PATH "${_dir}" _dir)
+    cmake_path(ABSOLUTE_PATH _dir BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" NORMALIZE)
+    if(EXISTS "${_dir}/${_triplet}.cmake")
+      set(_file "${_dir}/${_triplet}.cmake")
+      break()
+    endif()
+  endforeach()
+  if(NOT _file)
+    set(${out} UNKNOWN PARENT_SCOPE)
+    return()
+  endif()
+
+  # A triplet file only sets variables; read here, they stay in this function's scope.
+  foreach(_var VCPKG_TARGET_ARCHITECTURE VCPKG_CMAKE_SYSTEM_NAME VCPKG_LIBRARY_LINKAGE
+          VCPKG_CRT_LINKAGE VCPKG_XBOX_CONSOLE_TARGET)
+    unset(${_var})
+  endforeach()
+  set(TARGET_TRIPLET "${_triplet}")
+  set(PORT "")
+  include("${_file}")
+
+  set(_true "")
+  set(_a "${VCPKG_TARGET_ARCHITECTURE}")
+  set(_s "${VCPKG_CMAKE_SYSTEM_NAME}")
+  foreach(_id x64 x86 arm64 arm64ec wasm32 mips64)
+    if(_a STREQUAL _id)
+      list(APPEND _true ${_id})
+    endif()
+  endforeach()
+  if(_a STREQUAL "arm")
+    list(APPEND _true arm arm32)
+  elseif(_a STREQUAL "arm64")
+    list(APPEND _true arm)
+  endif()
+  if(_s STREQUAL "" OR _s STREQUAL "WindowsStore" OR _s STREQUAL "MinGW")
+    list(APPEND _true windows)
+  endif()
+  if(_s STREQUAL "" AND NOT "${VCPKG_XBOX_CONSOLE_TARGET}" STREQUAL "")
+    list(APPEND _true xbox)
+  endif()
+  set(_systems
+    mingw MinGW uwp WindowsStore linux Linux android Android ohos OHOS osx Darwin ios iOS
+    tvos tvOS watchos watchOS visionos visionOS freebsd FreeBSD openbsd OpenBSD netbsd NetBSD
+    solaris SunOS emscripten Emscripten qnx QNX vxworks VxWorks)
+  while(_systems)
+    list(POP_FRONT _systems _id _name)
+    if(_s STREQUAL _name)
+      list(APPEND _true ${_id})
+    endif()
+  endwhile()
+  if(_s MATCHES "^(Darwin|iOS|tvOS|watchOS|visionOS)$")
+    list(APPEND _true apple)
+  endif()
+  if(_s MATCHES "^(FreeBSD|OpenBSD|NetBSD)$")
+    list(APPEND _true bsd)
+  endif()
+  if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    list(APPEND _true static)
+  endif()
+  if(VCPKG_CRT_LINKAGE STREQUAL "static")
+    list(APPEND _true staticcrt)
+  endif()
+  if(_triplet STREQUAL _host)
+    list(APPEND _true native)
+  endif()
+  set(${out} "${_true}" PARENT_SCOPE)
+endfunction()
+
+# <out>: TRUE if the platform expression <expr> holds for the identifiers in <identifiers> (the
+# true ones, from _vcpkg_bootstrap_platform_identifiers()). Also TRUE if it cannot be evaluated
+# (identifiers UNKNOWN, an unknown identifier, a syntax this function does not know): such a
+# dependency is checked, which is what happened before platform expressions were evaluated.
+function(_vcpkg_bootstrap_platform_matches expr identifiers out)
+  set(${out} TRUE PARENT_SCOPE)
+  if(identifiers STREQUAL "UNKNOWN")
+    return()
+  endif()
+  string(REGEX REPLACE "[A-Za-z0-9_]+|[!&|,()]|[ \t]" "" _rest "${expr}")
+  if(NOT _rest STREQUAL "")
+    return()
+  endif()
+  string(REGEX MATCHALL "[A-Za-z0-9_]+|[!&|,()]" _tokens "${expr}")
+  set(_condition "")
+  foreach(_token IN LISTS _tokens)
+    if(_token MATCHES "^[()]$")
+      string(APPEND _condition " ${_token}")
+    elseif(_token STREQUAL "!" OR _token STREQUAL "not")
+      string(APPEND _condition " NOT")
+    elseif(_token STREQUAL "&" OR _token STREQUAL "and")
+      string(APPEND _condition " AND")
+    elseif(_token STREQUAL "|" OR _token STREQUAL ",")
+      string(APPEND _condition " OR")
+    elseif(_token IN_LIST _VCPKG_BOOTSTRAP_PLATFORM_IDENTIFIERS)
+      if(_token IN_LIST identifiers)
+        string(APPEND _condition " 1")
+      else()
+        string(APPEND _condition " 0")
+      endif()
+    else()
+      return()
+    endif()
+  endforeach()
+  cmake_language(EVAL CODE "
+    if(${_condition})
+      set(_result TRUE)
+    else()
+      set(_result FALSE)
+    endif()")
+  set(${out} ${_result} PARENT_SCOPE)
+endfunction()
+
 # Appends to <list_var> the port names of the JSON array at <member>... in <json>; entries are
-# names or objects with a "name" ("dependencies", "default-features").
+# names or objects with a "name" ("dependencies", "default-features"). Objects whose "platform"
+# does not hold for _vcpkg_bootstrap_platform (set by the caller) are left out.
 function(_vcpkg_bootstrap_json_names json list_var)
   set(_names "${${list_var}}")
   string(JSON _count ERROR_VARIABLE _err LENGTH "${json}" ${ARGN})
@@ -433,6 +586,13 @@ function(_vcpkg_bootstrap_json_names json list_var)
         string(JSON _name GET "${json}" ${ARGN} ${_i})
       else()
         string(JSON _name ERROR_VARIABLE _name_err GET "${json}" ${ARGN} ${_i} "name")
+        string(JSON _platform ERROR_VARIABLE _platform_err GET "${json}" ${ARGN} ${_i} "platform")
+        if(NOT _platform_err AND DEFINED _vcpkg_bootstrap_platform)
+          _vcpkg_bootstrap_platform_matches("${_platform}" "${_vcpkg_bootstrap_platform}" _matches)
+          if(NOT _matches)
+            continue()
+          endif()
+        endif()
       endif()
       if(_name)
         list(APPEND _names "${_name}")
@@ -509,6 +669,9 @@ function(_vcpkg_bootstrap_check_path_lengths root hint)
   endif()
   file(READ "${_manifest}" _json)
 
+  # Dependencies (and features) that are not for the target triplet are left out.
+  _vcpkg_bootstrap_platform_identifiers("${root}" _vcpkg_bootstrap_platform)
+
   # What the manifest asks for: its dependencies and those of the enabled features.
   set(_features ${VCPKG_MANIFEST_FEATURES})
   if(NOT VCPKG_MANIFEST_NO_DEFAULT_FEATURES)
@@ -521,7 +684,7 @@ function(_vcpkg_bootstrap_check_path_lengths root hint)
   endforeach()
 
   # Follow the ports' own dependencies and default features (an approximation of vcpkg's plan:
-  # platform expressions and features requested by dependents are not evaluated).
+  # features requested by dependents are not evaluated).
   set(_ports "")
   while(_queue)
     list(POP_FRONT _queue _port)
