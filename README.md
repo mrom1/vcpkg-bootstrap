@@ -65,7 +65,18 @@ project(myproject CXX)
 | `ON` | A private clone in `<build>/vcpkg`; `VCPKG_ROOT` is ignored | Everything stays in the build folder |
 
 With `ON`, deleting the build folder removes vcpkg and every package it installed; nothing is
-written outside of it. The price is a full vcpkg clone and bootstrap per build folder.
+written outside of it. That includes vcpkg's own caches, which otherwise live in your user profile:
+
+| | Shared mode (vcpkg's defaults) | Isolated mode |
+| --- | --- | --- |
+| Binary cache (built packages, reused across build folders) | `%LOCALAPPDATA%\vcpkg\archives`, `~/.cache/vcpkg/archives` | `<build>/vcpkg-bootstrap/archives` |
+| Git registry cache | `%LOCALAPPDATA%\vcpkg\registries`, `~/.cache/vcpkg/registries` | `<build>/vcpkg-bootstrap/registries` |
+| Downloads (sources, tools) | `<vcpkg>/downloads` | `<build>/vcpkg/downloads` |
+
+In isolated mode, settings for these in the environment (`VCPKG_BINARY_SOURCES`,
+`VCPKG_DEFAULT_BINARY_CACHE`, `X_VCPKG_REGISTRIES_CACHE`, `VCPKG_DOWNLOADS`) are ignored, like
+`VCPKG_ROOT`; the configure says so. The price is a full vcpkg clone and bootstrap per build
+folder, and every package is built once per build folder.
 
 Choose the mode on the first configure of a build folder (`-DVCPKG_BOOTSTRAP_ISOLATED=ON`). It is
 remembered; changing it later in the same build folder is refused with an error (see

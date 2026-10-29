@@ -36,6 +36,8 @@
 #                               Linux/macOS: $XDG_CACHE_HOME/vcpkg-bootstrap/vcpkg
 #                                            or ~/.cache/vcpkg-bootstrap/vcpkg
 #                             ON: private vcpkg in ${CMAKE_BINARY_DIR}/vcpkg; ENV{VCPKG_ROOT} ignored.
+#                             vcpkg's binary cache, registry cache and downloads stay in the build
+#                             directory too (${CMAKE_BINARY_DIR}/vcpkg-bootstrap, <vcpkg>/downloads).
 #
 # Function:
 #   vcpkg_bootstrap_install(<port>...)
@@ -844,6 +846,40 @@ endfunction()
 ## Main                                                                              ##
 #######################################################################################
 
+# Isolated mode keeps everything vcpkg writes in the build directory. vcpkg itself writes outside
+# of its root by default: its binary cache (%LOCALAPPDATA%/vcpkg/archives, ~/.cache/vcpkg/archives)
+# and the cache of git registries (.../vcpkg/registries); user settings in the environment can send
+# downloads and binary caches anywhere. vcpkg reads all of these from its environment, which the
+# vcpkg runs of this configure (manifest and classic mode) inherit, so they are set here:
+#   binary cache   <build>/vcpkg-bootstrap/archives (the only binary source)
+#   registries     <build>/vcpkg-bootstrap/registries
+#   downloads      <vcpkg root>/downloads (vcpkg's default)
+# Like ENV{VCPKG_ROOT}, the user's own values are ignored, with a note.
+function(_vcpkg_bootstrap_isolate_caches root)
+  set(_dir "${CMAKE_BINARY_DIR}/vcpkg-bootstrap")
+  file(MAKE_DIRECTORY "${_dir}/archives" "${_dir}/registries")
+  file(TO_NATIVE_PATH "${_dir}/archives" _archives)
+  file(TO_NATIVE_PATH "${_dir}/registries" _registries)
+
+  set(_ignored "")
+  foreach(_var VCPKG_BINARY_SOURCES VCPKG_DEFAULT_BINARY_CACHE X_VCPKG_REGISTRIES_CACHE VCPKG_DOWNLOADS)
+    if(NOT "$ENV{${_var}}" STREQUAL "")
+      list(APPEND _ignored "${_var}")
+    endif()
+  endforeach()
+  if(_ignored)
+    list(JOIN _ignored ", " _ignored)
+    message(STATUS
+      "[vcpkg-bootstrap] Isolated mode: ignoring ${_ignored} from the environment; vcpkg's caches "
+      "and downloads stay in the build directory.")
+  endif()
+
+  set(ENV{VCPKG_DEFAULT_BINARY_CACHE} "${_archives}")
+  set(ENV{VCPKG_BINARY_SOURCES} "clear;files,${_archives},readwrite")
+  set(ENV{X_VCPKG_REGISTRIES_CACHE} "${_registries}")
+  unset(ENV{VCPKG_DOWNLOADS})
+endfunction()
+
 function(_vcpkg_bootstrap_activate root)
   set_property(GLOBAL PROPERTY VCPKG_BOOTSTRAP_ACTIVE TRUE)
   set(VCPKG_BOOTSTRAP_ROOT "${root}" CACHE INTERNAL "vcpkg root used by vcpkg-bootstrap")
@@ -1064,6 +1100,9 @@ function(_vcpkg_bootstrap_main)
   endif()
 
   message(STATUS "[vcpkg-bootstrap] Using vcpkg (${_source}): ${_root}")
+  if(_source STREQUAL "isolated")
+    _vcpkg_bootstrap_isolate_caches("${_root}")
+  endif()
   if(_managed)
     set(_exact FALSE)
     if(_source STREQUAL "isolated")
