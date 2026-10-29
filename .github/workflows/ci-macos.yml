@@ -36,6 +36,7 @@ jobs:
           - { case: include-file,                   isolated: "ON"  }
           - { case: manifest-file-baseline,         isolated: "OFF" }
           - { case: long-path-warning,              isolated: "ON"  }
+          - { case: long-path-build,                isolated: "ON"  }
           - { case: bundled-vcpkg,                  isolated: "OFF" }
           - { case: install-function,               isolated: "OFF" }
           - { case: install-function,               isolated: "ON"  }
