@@ -15,6 +15,10 @@ The test does not need Visual Studio: it creates a fake bundle (`vcpkg-bundle.js
 - **B — [`with-baseline/`](with-baseline):** `vcpkg.json` with `builtin-baseline`. Expected:
   `ENV{VCPKG_ROOT} is a bundled vcpkg ...; using it`, the stub toolchain is loaded,
   `VCPKG_BOOTSTRAP_ROOT` = the bundle, nothing is cloned; build, run: `Hello World!`.
+- **C — [`with-baseline/`](with-baseline), `VCPKG_ROOT` left over:** `VCPKG_ROOT` points to a
+  directory that does not exist (the vcpkg was moved or deleted). Expected:
+  `Ignoring ENV{VCPKG_ROOT} (...): not a vcpkg root`, then `Using vcpkg (shared)` with the managed
+  clone of A, no error; build, run: `Hello World!`.
 
 Mode: shared only. The managed vcpkg for A is cloned into the run directory
 (`-DVCPKG_BOOTSTRAP_INSTALL_DIR=<run dir>/managed`), not the user cache.

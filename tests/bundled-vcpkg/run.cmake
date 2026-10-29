@@ -4,6 +4,8 @@
 # Such a vcpkg only works with a manifest that pins a builtin-baseline (vcpkg's own rule).
 # A: no vcpkg.json -> ENV{VCPKG_ROOT} is ignored with the reason, a managed vcpkg is used.
 # B: vcpkg.json with builtin-baseline -> the bundled vcpkg is used.
+# C: ENV{VCPKG_ROOT} points to a directory that does not exist -> ignored with a note, a managed
+#    vcpkg is used (also with a builtin-baseline).
 #
 #   cmake -DVB_SCRIPT_DIR=<checkout of main> -P tests/bundled-vcpkg/run.cmake
 
@@ -276,5 +278,17 @@ cache_get(root "${BUILD_B}" VCPKG_BOOTSTRAP_ROOT)
 expect_same_path("VCPKG_BOOTSTRAP_ROOT" "${root}" "${BUNDLE}")
 build(with-baseline "${BUILD_B}")
 run_main(with-baseline "${BUILD_B}")
+
+# C: ENV{VCPKG_ROOT} is a leftover (the directory does not exist): ignored with a note even though
+# the manifest pins a baseline; the managed vcpkg of A is used.
+set(ENV{VCPKG_ROOT} "${RUN_DIR}/does-not-exist/vcpkg")
+set(BUILD_C "${RUN_DIR}/build-missing-root")
+configure(missing-root "${CASE_DIR}/with-baseline" "${BUILD_C}" ARGS "-DVCPKG_BOOTSTRAP_INSTALL_DIR=${MANAGED}"
+  CONTAINS "Ignoring ENV\\{VCPKG_ROOT\\}.*not a vcpkg root" "Using vcpkg \\(shared\\)"
+  NOT_CONTAINS "fake-bundle-toolchain-loaded" "does not look like a vcpkg root")
+cache_get(root "${BUILD_C}" VCPKG_BOOTSTRAP_ROOT)
+expect_same_path("VCPKG_BOOTSTRAP_ROOT" "${root}" "${MANAGED}/vcpkg")
+build(missing-root "${BUILD_C}")
+run_main(missing-root "${BUILD_C}")
 
 message(STATUS "PASSED ${CASE} (${MODE})")
