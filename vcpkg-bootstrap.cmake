@@ -442,6 +442,55 @@ function(_vcpkg_bootstrap_json_names json list_var)
   set(${list_var} "${_names}" PARENT_SCOPE)
 endfunction()
 
+# Ports built with CMake keep their objects in <build>/CMakeFiles/<target>.dir/<source path>.obj,
+# one of the longest paths of a build. CMake 4.2+ names these directories and objects by short
+# hashes instead with CMAKE_INTERMEDIATE_DIR_STRATEGY=SHORT (<build>/.o/<hash>/<hash>.obj), which it
+# also reads from the environment when it starts. vcpkg builds ports with its own CMake and clears
+# their environment on Windows except for the variables named in VCPKG_KEEP_ENV_VARS. Setting both
+# here, before vcpkg runs, reaches every port build of this configure (manifest and classic mode)
+# without changing vcpkg, its triplets or the package ABI. This project's own build is not
+# affected: CMake read its environment before this runs. The user's own setting wins.
+function(_vcpkg_bootstrap_short_build_paths)
+  if(NOT CMAKE_HOST_WIN32)
+    return()
+  endif()
+  if(NOT DEFINED ENV{CMAKE_INTERMEDIATE_DIR_STRATEGY})
+    set(ENV{CMAKE_INTERMEDIATE_DIR_STRATEGY} SHORT)
+  endif()
+  set(_keep "$ENV{VCPKG_KEEP_ENV_VARS}")
+  if(NOT "CMAKE_INTERMEDIATE_DIR_STRATEGY" IN_LIST _keep)
+    list(APPEND _keep CMAKE_INTERMEDIATE_DIR_STRATEGY)
+    set(ENV{VCPKG_KEEP_ENV_VARS} "${_keep}")
+  endif()
+endfunction()
+
+# Directory of <port> as vcpkg would pick it: the overlay ports first (VCPKG_OVERLAY_PORTS, each a
+# port directory or a directory of ports; relative to the top-level source directory), then the
+# ports tree of <root>. Empty if not found.
+function(_vcpkg_bootstrap_port_dir root port out)
+  foreach(_overlay IN LISTS VCPKG_OVERLAY_PORTS)
+    file(TO_CMAKE_PATH "${_overlay}" _overlay)
+    cmake_path(ABSOLUTE_PATH _overlay BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" NORMALIZE)
+    string(REGEX REPLACE "/$" "" _overlay "${_overlay}")
+    if(EXISTS "${_overlay}/vcpkg.json")
+      file(READ "${_overlay}/vcpkg.json" _json)
+      string(JSON _name ERROR_VARIABLE _err GET "${_json}" "name")
+      if(_name STREQUAL port)
+        set(${out} "${_overlay}" PARENT_SCOPE)
+        return()
+      endif()
+    elseif(EXISTS "${_overlay}/${port}/vcpkg.json")
+      set(${out} "${_overlay}/${port}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  if(EXISTS "${root}/ports/${port}/vcpkg.json")
+    set(${out} "${root}/ports/${port}" PARENT_SCOPE)
+  else()
+    set(${out} "" PARENT_SCOPE)
+  endif()
+endfunction()
+
 # Some ports fail to build beyond Windows' 260 character path limit. vcpkg knows which (they
 # call vcpkg_buildpath_length_warning(<max>) with the longest <buildtrees>/<port> they tolerate)
 # but warns only from inside the port build, deep in its output, after downloading and
@@ -476,11 +525,16 @@ function(_vcpkg_bootstrap_check_path_lengths root hint)
   set(_ports "")
   while(_queue)
     list(POP_FRONT _queue _port)
-    if(_port IN_LIST _ports OR NOT EXISTS "${root}/ports/${_port}/vcpkg.json")
+    if(_port IN_LIST _ports)
+      continue()
+    endif()
+    _vcpkg_bootstrap_port_dir("${root}" "${_port}" _port_dir)
+    if(NOT _port_dir)
       continue()
     endif()
     list(APPEND _ports "${_port}")
-    file(READ "${root}/ports/${_port}/vcpkg.json" _port_json)
+    set(_port_dir_${_port} "${_port_dir}")
+    file(READ "${_port_dir}/vcpkg.json" _port_json)
     _vcpkg_bootstrap_json_names("${_port_json}" _queue "dependencies")
     set(_port_features "")
     _vcpkg_bootstrap_json_names("${_port_json}" _port_features "default-features")
@@ -503,7 +557,7 @@ function(_vcpkg_bootstrap_check_path_lengths root hint)
 
   set(_too_long "")
   foreach(_port IN LISTS _ports)
-    file(STRINGS "${root}/ports/${_port}/portfile.cmake" _line LIMIT_COUNT 1
+    file(STRINGS "${_port_dir_${_port}}/portfile.cmake" _line LIMIT_COUNT 1
          REGEX "vcpkg_buildpath_length_warning\\([0-9]+\\)")
     if(NOT _line MATCHES "vcpkg_buildpath_length_warning\\(([0-9]+)\\)")
       continue()
@@ -521,8 +575,20 @@ function(_vcpkg_bootstrap_check_path_lengths root hint)
       "[vcpkg-bootstrap] These ports will likely fail to build from source on Windows, because "
       "their build directories exceed the 260 character path limit (vcpkg's own limits):"
       "${_too_long}\n"
+      "This is a limitation of MSVC, not of vcpkg-bootstrap: MSVC's compiler (cl.exe) cannot open "
+      "paths longer than 260 characters, not even with Windows' long path support enabled, "
+      "because it does not declare itself long path aware "
+      "(https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation). "
       "Packages vcpkg restores from its binary cache are not affected, so this only matters for "
-      "packages built here for the first time.\n${hint}")
+      "packages built here for the first time.\n"
+      "To build them:\n"
+      "  - Keep vcpkg in a short directory, as vcpkg recommends for these ports "
+      "(https://learn.microsoft.com/vcpkg/maintainers/functions/vcpkg_buildpath_length_warning): "
+      "${hint}\n"
+      "  - Or build with a compiler that supports long paths, such as clang-cl (Visual Studio "
+      "component \"C++ Clang tools for Windows\"), with Windows' long path support enabled. Use it "
+      "for the project and all its C++ dependencies: C++ libraries built with MSVC and clang-cl "
+      "cannot always be mixed (Qt cannot).")
   endif()
 endfunction()
 
@@ -891,6 +957,7 @@ function(_vcpkg_bootstrap_main)
     return()
   endif()
 
+  _vcpkg_bootstrap_short_build_paths()
   find_package(Git QUIET)
 
   # --- Included after project(): the toolchain can no longer be changed ----------------
@@ -1114,14 +1181,13 @@ function(_vcpkg_bootstrap_main)
   endif()
 
   if(_source STREQUAL "isolated")
-    string(CONCAT _hint "In isolated mode vcpkg lives in the build directory. To build them, use "
-                        "shared mode with a short location: -DVCPKG_BOOTSTRAP_ISOLATED=OFF "
-                        "-DVCPKG_BOOTSTRAP_INSTALL_DIR=C:/src")
+    string(CONCAT _hint "in isolated mode vcpkg lives in the build directory, so turn isolated "
+                        "mode off and choose a short directory: -DVCPKG_BOOTSTRAP_ISOLATED=OFF "
+                        "-DVCPKG_BOOTSTRAP_INSTALL_DIR=<short directory>")
   elseif(_managed)
-    set(_hint "To build them, keep vcpkg in a short location: -DVCPKG_BOOTSTRAP_INSTALL_DIR=C:/src")
+    set(_hint "-DVCPKG_BOOTSTRAP_INSTALL_DIR=<short directory>")
   else()
-    string(CONCAT _hint "To build them, move this vcpkg to a short path such as C:/src/vcpkg "
-                        "(vcpkg's recommendation) or use the subst command.")
+    set(_hint "move this vcpkg to a short directory, or use the subst command.")
   endif()
   _vcpkg_bootstrap_check_path_lengths("${_root}" "${_hint}")
 
